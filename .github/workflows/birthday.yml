@@ -1,0 +1,41 @@
+name: Birthday notification
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send birthday notifications
+        env:
+          OS_KEY: ${{ secrets.ONESIGNAL_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error, datetime
+          H = {'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+          tz = datetime.timezone(datetime.timedelta(hours=6))
+          today = datetime.datetime.now(tz).strftime('%m-%d')
+          url = 'https://firestore.googleapis.com/v1/projects/sadhu-joseph-sangha-a8dc1/databases/(default)/documents/members?pageSize=300&key=AIzaSyBMs8M8YHppFyONkUfnlE4OHr3HizWZOro'
+          docs = json.load(urllib.request.urlopen(urllib.request.Request(url, headers=H))).get('documents', [])
+          names, ids = [], []
+          for d in docs:
+              f = d.get('fields', {})
+              bd = f.get('bd', {}).get('stringValue', '')
+              if bd[5:] == today:
+                  names.append(f.get('name', {}).get('stringValue', ''))
+                  ids.append(d['name'].split('/')[-1])
+          print('today', today, names)
+          def send(body):
+              body.update({'app_id': 'ed4f3024-60d7-4a43-8233-f0fc5224f6f6', 'target_channel': 'push'})
+              h = dict(H)
+              h['Authorization'] = 'Key ' + os.environ['OS_KEY']
+              r = urllib.request.Request('https://api.onesignal.com/notifications?c=push', data=json.dumps(body).encode(), headers=h)
+              try:
+                  print(urllib.request.urlopen(r).read().decode())
+              except urllib.error.HTTPError as e:
+                  print('error', e.code, e.read().decode())
+          if names:
+              send({'included_segments': ['Total Subscriptions'], 'headings': {'en': '🎂 আজ জন্মদিন'}, 'contents': {'en': 'আজ ' + ', '.join(names) + '-এর জন্মদিন। শুভেচ্ছা জানাতে ভুলবেন না!'}, 'url': 'https://durjoygomes58-hash.github.io/sadhu-joseph-sangha/'})
+              send({'include_aliases': {'external_id': ids}, 'headings': {'en': '🎂 শুভ জন্মদিন!'}, 'contents': {'en': 'সাধু যোসেফ যুব সংঘের পক্ষ থেকে তোমাকে জন্মদিনের অনেক শুভেচ্ছা ও ভালোবাসা। 🙏'}})
+          PY
